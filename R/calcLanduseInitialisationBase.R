@@ -93,7 +93,7 @@ calcLanduseInitialisationBase <- function(cells = "lpjcell", selectyears = "past
   cyears <- intersect(getYears(vegC, as.integer = TRUE), selectyears)
   vegC <- vegC[, cyears, ]
 
-  lu2 <- toolForestRelocate(lu = lu, luCountry = luCountry, natTarget = natTarget, vegC = vegC)
+  lu2 <- lu
 
   .splitOther <- function(lu, luh) {
     # split other land in primary and secondary other land
