@@ -80,6 +80,9 @@ calcLanduseInitialisationBase <- function(cells = "lpjcell", selectyears = "past
   # based on forestArea information (area sizes kept as reported by luh)
   lu <- .luIni(luh, forestArea)
 
+  lu <- mrdownscale::toolScaleConstantArea(lu, warnThreshold = 0.001)
+  lu <- mrdownscale::toolReplaceExpansion(lu, "primforest", "secdforest", warnThreshold = 1)
+
   luCountry <- toolCountryFill(dimSums(lu, dim = c("x", "y")),
                                fill = 0, verbosity = 2)
   natTarget <- .natureTarget(luCountry, forestArea)
@@ -127,16 +130,6 @@ calcLanduseInitialisationBase <- function(cells = "lpjcell", selectyears = "past
     }
     out[out < 0] <- 0
   }
-
-  # Before applying the expansion tool, save Brazil cells
-  brazilCells <- grepl("\\.BRA$", getItems(out, dim = 1))
-  outBrazil <- out[brazilCells, , , drop = FALSE]
-
-  out <- mrdownscale::toolScaleConstantArea(out, warnThreshold = 0.001)
-  out <- mrdownscale::toolReplaceExpansion(out, "primforest", "secdforest", warnThreshold = 1)
-
-  out[brazilCells, , ] <- outBrazil
-  warning(sum(brazilCells), " Brazil cells restored after expansion.")
 
   return(list(x = out,
               weight = NULL,
