@@ -61,6 +61,55 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
   names(dimnames(x)) <- c("x.y.iso", "t", "landuse")
   getSets(x, fulldim = FALSE)[3] <- "landuse"
 
+  # adjusts a single cell so that the sum of its classes does not exceed the ceiling (max cell area in the Equator).
+  # the largest class is reduced first, and reductions continue until the total is <= ceil.
+  .adjustCell <- function(cellValues, ceil = 0.30914) {
+    total <- sum(cellValues)
+
+    while (total > ceil) {
+      # find the index of the class with maximum value
+      maxClassIdx <- which.max(cellValues)
+
+      # calculate excess
+      excess <- total - ceil
+
+      # reduce the maximum class by the excess area, never going below zero
+      reduction <- min(excess, cellValues[maxClassIdx])
+      cellValues[maxClassIdx] <- cellValues[maxClassIdx] - reduction
+
+      # recalculate the total after reduction
+      total <- sum(cellValues)
+    }
+    return(cellValues)
+  }
+
+  # applies .adjustCell to an entire grid (cells x years x land use classes)
+  # loops over all cells and years, ensuring that no cell exceeds the ceiling
+  .adjustGrid <- function(gridArray, ceil = 0.30914) {
+    dims <- dim(gridArray)
+    # loop over cells and years
+    for (i in 1:dims[1]) {
+      for (j in 1:dims[2]) {
+        gridArray[i, j, ] <- .adjustCell(gridArray[i, j, ], ceil)
+      }
+    }
+    return(gridArray)
+  }
+
+  # select Brazil cells
+  brazilCells <- getCells(x)[grepl("\\.BRA$", getCells(x))]
+  xBra <- x[brazilCells, , ]
+
+  # apply adjustment to not exceed max area
+  dataAdjusted <- .adjustGrid(as.array(xBra))
+
+  # put adjusted data back into magpie object
+  xBra[, ] <- dataAdjusted
+
+  # check sums per cell
+  cellSums <- dimSums(xBra, dim = 3)
+  range(as.vector(cellSums))
+
   if (isTRUE(irrigation)) {
     crops <- c("c3ann", "c3per", "c4ann", "c4per", "c3nfx")
     irrigLUH <- readSource("LUH3", "management", yrs, convert = FALSE)
@@ -88,6 +137,26 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     stopifnot(min(x[, , "rainfed"]) >= 0)
   }
 
+  # adjust past to avoid negative values
+  .adjustPastCells <- function(pastValues, otherValues, forestValues, urbanValues) {
+    deficit <- -pastValues
+    adjustOther <- pmin(deficit, otherValues)
+    otherValues <- otherValues - adjustOther
+    deficit <- deficit - adjustOther
+
+    adjustForest <- pmin(deficit, forestValues)
+    forestValues <- forestValues - adjustForest
+    deficit <- deficit - adjustForest
+
+    adjustUrban <- pmin(deficit, urbanValues)
+    urbanValues <- urbanValues - adjustUrban
+    deficit <- deficit - adjustUrban
+
+    pastValues[pastValues < 0] <- 0
+
+    list(past = pastValues, other = otherValues, forest = forestValues, urban = urbanValues)
+  }
+
   if (landuseTypes == "magpie") {
     mapping <- toolGetMapping("LUH3.csv", where = "mrlandcore")
     if (isTRUE(irrigation)) {
@@ -97,6 +166,99 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     }
     stopifnot(setequal(getItems(x, 3), mapping$luh3))
     x <- toolAggregate(x, mapping, dim = 3, from = "luh3", to = "land")
+
+    cropIBGE <- readSource("IBGE", "Cropland")
+
+    # select Brazil cells
+    brazilCells <- getCells(x)[grepl("\\.BRA$", getCells(x))]
+    xBra <- x[brazilCells, , ]
+
+    # total per class (sum over all Brazil cells)
+    totalPerClass <- as.data.frame(dimSums(xBra, dim = 1))
+    totalPerClass
+
+    totalCountry <- dimSums(xBra, dim = c(1, 3))
+    totalCountry
+
+    # check sums per cell
+    cellSums <- dimSums(xBra, dim = 3)
+    range(as.vector(cellSums))
+
+    yearsToAdjust <- c("y1995")
+
+    for (year in yearsToAdjust) {
+      cropOrig <- xBra[, year, "crop"]
+      pastOrig <- xBra[, year, "past"]
+
+      # compute farm = crop + past
+      farm <- cropOrig + pastOrig
+
+      # replace crop with IBGE
+      cropNew <- cropIBGE[, year, "cropland"]
+
+      # compute new past = farm - new crop
+      pastNew <- farm - cropNew
+
+      # identify cells with negative past
+      negCells <- pastNew < 0
+
+      # number of negative cells
+      numNegCells <- sum(as.vector(negCells))
+      #numNegCells
+
+      # sum of negative values (pastNew < 0)
+      totalNeg <- sum(as.vector(pastNew[negCells]))
+      #totalNeg
+
+      if (any(negCells)) {
+        otherOrig <- xBra[, year, "other"]
+        forestOrig <- xBra[, year, "forest"]
+        urbanOrig <- xBra[, year, "urban"]
+
+        adjustedCells <- .adjustPastCells(
+          pastNew[negCells],
+          otherOrig[negCells],
+          forestOrig[negCells],
+          urbanOrig[negCells]
+        )
+
+        pastNew[negCells] <- adjustedCells$past
+        xBra[negCells, year, "other"] <- adjustedCells$other
+        xBra[negCells, year, "forest"] <- adjustedCells$forest
+        xBra[negCells, year, "urban"] <- adjustedCells$urban
+      }
+
+      # update xBra with new crop and past
+      xBra[, year, "crop"] <- cropNew
+      xBra[, year, "past"] <- pastNew
+
+
+      # identify cells with negative past
+      negxBraCells <- xBra < 0
+
+      # number of negative cells
+      numNegXCells <- sum(as.vector(negxBraCells))
+      #numNegXCells
+    }
+
+    # apply adjustment to not exceed max area
+    dataAdjusted <- .adjustGrid(as.array(xBra))
+
+    # put adjusted data back into magpie object
+    xBra[, ] <- dataAdjusted
+    # check sums per cell
+    cellSums <- dimSums(xBra, dim = 3)
+    range(as.vector(cellSums))
+
+    # total per class (sum over all Brazil cells)
+    totalPerClass <- as.data.frame(dimSums(xBra, dim = 1))
+    #totalPerClass
+
+    totalCountry <- dimSums(xBra, dim = c(1, 3))
+    #totalCountry
+
+    x[brazilCells, , ] <- xBra
+
   }
 
   if (!cellular) {
