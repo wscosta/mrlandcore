@@ -19,7 +19,11 @@
 readIBGE <- function(subtype = "Cropland") {
 
   files <- c(
-    Cropland = "cropland_1995_all.csv"
+    #Cropland = "/p/projects/rd3mod/inputdata/sources/IBGE/cropland_1995_all.csv"
+    #Cropland = "cropland_1995_all.csv"
+    #Cropland = "/p/projects/rd3mod/inputdata/sources/IBGE/crop_planted_area_1995_luh3_all.csv"
+    Cropland = "crop_planted_area_1995_luh3_all.csv"
+
   )
 
   if (!subtype %in% names(files)) {
@@ -60,6 +64,9 @@ readIBGE <- function(subtype = "Cropland") {
   # Conversion (ha to Mha)
   dat[["value"]] <- dat[["value"]] / 1e6
 
+  # Reverse rows to standardize the x.y.iso order with LUH3 data
+  #dat <- dat[rev(seq_len(nrow(dat))), ]
+
   # Cap values
   dat <- .capValues(dat, "value")
 
@@ -69,8 +76,10 @@ readIBGE <- function(subtype = "Cropland") {
     tidy = TRUE
   )
 
-  magclass::getItems(mag, 1, raw = TRUE) <- dat[["x.y.iso"]]
+  dimnames(mag)[[1]] <- unique(dat[["x.y.iso"]])
+  #magclass::getItems(mag, 1, raw = TRUE) <- dat[["x.y.iso"]]
 
+  sum(mag, na.rm = TRUE)
 
   return(mag)
 }

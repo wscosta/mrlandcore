@@ -20,8 +20,11 @@
 #' }
 calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
                      cellular = FALSE, yrs = seq(1965, 2020, 5)) {
-
-  yrs <- as.integer(gsub("y", "", yrs))
+  # landuseTypes <- "magpie"
+  # irrigation <- FALSE
+  # cellular <- FALSE
+  # yrs <- seq(1965, 2020, 5)
+  # yrs <- as.integer(gsub("y", "", yrs))
 
   .aggregateWithMapping <- function(x) {
     mapping <- calcOutput("ResolutionMapping", input = "magpie", target = "luh3", aggregate = FALSE)
@@ -60,6 +63,16 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
 
   names(dimnames(x)) <- c("x.y.iso", "t", "landuse")
   getSets(x, fulldim = FALSE)[3] <- "landuse"
+
+  cropIBGE <- readSource("IBGE", "Cropland")
+
+  # # total per class (sum over all Brazil cells)
+  # totalPerClassBefore <- as.data.frame(dimSums(xBra, dim = 1))
+  # totalPerClassBefore
+
+  # totalCountry <- dimSums(xBra, dim = c(1, 3))
+  # totalCountry
+
 
   # adjusts a single cell so that the sum of its classes does not exceed the ceiling (max cell area in the Equator).
   # the largest class is reduced first, and reductions continue until the total is <= ceil.
@@ -110,6 +123,316 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
   cellSums <- dimSums(xBra, dim = 3)
   range(as.vector(cellSums))
 
+  year <- "y1995"
+
+  cropPastOrig <- xBra[, year, c("c3ann", "c4ann", "c3per", "c4per", "c3nfx", "pastr", "range")]
+  # Crop = soma das culturas anuais e perenes
+  cropOrig <- magclass::dimSums(
+    xBra[, year, c("c3ann", "c4ann", "c3per", "c4per", "c3nfx")],
+    dim = 3
+  )
+  dimnames(cropOrig)[[3]] <- "crop.past"
+  names(dimnames(cropOrig))[3] <- "landuse"
+
+  # Past = soma de pastagem manejada + natural
+  pastOrig <- magclass::dimSums(
+    xBra[, year, c("pastr", "range")],
+    dim = 3
+  )
+  dimnames(pastOrig)[[3]] <- "crop.past"
+  names(dimnames(pastOrig))[3] <- "landuse"
+
+  # compute farm = crop + past
+  farm <- cropOrig + pastOrig
+  dimnames(farm)[[3]] <- "crop.past"
+  names(dimnames(farm))[3] <- "landuse"
+
+
+  # replace crop with IBGE
+  cropNew <- cropIBGE[, year, c("c3ann", "c3per", "c4ann", "c4per", "c3nfx")]
+  names(dimnames(cropNew))[3] <- "landuse"
+  idx <- match(dimnames(farm)[[1]], dimnames(cropNew)[[1]])
+  cropNew <- cropNew[idx, , drop = FALSE]
+  idx <- match(dimnames(farm)[[1]], dimnames(cropNew)[[1]])
+
+  # Crop Total = soma das culturas anuais e perenes
+  cropNewTotal <- magclass::dimSums(
+    cropNew[, year, c("c3ann", "c4ann", "c3per", "c4per", "c3nfx")],
+    dim = 3
+  )
+  dimnames(cropNewTotal)[[3]] <- "crop.past"
+  names(dimnames(cropNewTotal))[3] <- "landuse"
+
+  # realign cropNew with farm
+  idx <- match(dimnames(farm)[[1]], dimnames(cropNewTotal)[[1]])
+  cropNewTotal <- cropNewTotal[idx, , drop = FALSE]
+  idx <- match(dimnames(farm)[[1]], dimnames(cropNewTotal)[[1]])
+
+  # compute new past = farming LUH3 - crop IBGE
+  pastNewTotal <- farm - cropNewTotal
+  dimnames(pastNewTotal)[[3]] <- "past"
+  names(dimnames(pastNewTotal))[3] <- "landuse"
+
+  # Seleciona pastr e range para o ano
+  pastNewSplit <- xBra[, year, c("pastr", "range")]
+
+  # Redistribui a diferença usando subsetting direto
+  pastNewSplit[, , "pastr"] <- pastNewTotal[, , 1] * 0.35
+  pastNewSplit[, , "range"] <- pastNewTotal[, , 1] * 0.65
+
+  sum(pastNewSplit, na.rm = TRUE)
+
+  .adjustPastCellsLUH3 <- function(pastrValues, rangeValues,
+                                   primnValues, secdnValues,
+                                   primfValues, secdfValues,
+                                   urbanValues) {
+    # soma das pastagens
+    pastTotal <- pastrValues + rangeValues
+
+    # deficit = valores negativos da soma de pastr + range
+    deficit <- -pmin(pastTotal, 0)
+
+    # realocação para primn
+    adjustPrimn <- pmin(deficit, primnValues)
+    primnValues <- primnValues - adjustPrimn
+    deficit <- deficit - adjustPrimn
+
+    # realocação para secdn
+    idx <- deficit > 0
+    if (any(idx)) {
+      adjustSecdn <- pmin(deficit[idx], secdnValues[idx])
+      secdnValues[idx] <- secdnValues[idx] - adjustSecdn
+      deficit[idx] <- deficit[idx] - adjustSecdn
+    }
+
+    # realocação para primf
+    idx <- deficit > 0
+    if (any(idx)) {
+      adjustPrimf <- pmin(deficit[idx], primfValues[idx])
+      primfValues[idx] <- primfValues[idx] - adjustPrimf
+      deficit[idx] <- deficit[idx] - adjustPrimf
+    }
+
+    # realocação para secdf
+    idx <- deficit > 0
+    if (any(idx)) {
+      adjustSecdf <- pmin(deficit[idx], secdfValues[idx])
+      secdfValues[idx] <- secdfValues[idx] - adjustSecdf
+      deficit[idx] <- deficit[idx] - adjustSecdf
+    }
+
+    # realocação para urban
+    idx <- deficit > 0
+    if (any(idx)) {
+      adjustUrban <- pmin(deficit[idx], urbanValues[idx])
+      urbanValues[idx] <- urbanValues[idx] - adjustUrban
+      deficit[idx] <- deficit[idx] - adjustUrban
+    }
+
+    pastrValues[deficit == 0] <- 0
+    rangeValues[deficit == 0] <- 0
+
+    list(
+      pastr = pastrValues,
+      range = rangeValues,
+      primn = primnValues,
+      secdn = secdnValues,
+      primf = primfValues,
+      secdf = secdfValues,
+      urban = urbanValues,
+      residual = deficit
+    )
+  }
+
+
+  negCells <- (pastNewSplit[, year, "pastr"] + pastNewSplit[, year, "range"]) < 0
+
+  # number of negative cells
+  numNegCells <- sum(as.vector(negCells))
+  numNegCells
+
+  # sum of negative values (pastNewSplit < 0)
+  totalNeg <- sum(as.vector(pastNewSplit[negCells]))
+  totalNeg
+
+  if (any(negCells)) {
+    primnOrig <- xBra[, year, "primn"]
+    secdnOrig <- xBra[, year, "secdn"]
+    primfOrig <- xBra[, year, "primf"]
+    secdfOrig <- xBra[, year, "secdf"]
+    urbanOrig <- xBra[, year, "urban"]
+
+    adjusted <- .adjustPastCellsLUH3(
+      pastrValues = pastNewSplit[negCells, year, "pastr"],
+      rangeValues = pastNewSplit[negCells, year, "range"],
+      primnValues = primnOrig[negCells],
+      secdnValues = secdnOrig[negCells],
+      primfValues = primfOrig[negCells],
+      secdfValues = secdfOrig[negCells],
+      urbanValues = urbanOrig[negCells]
+    )
+
+    # atualiza o xBra
+    pastNewSplit[negCells, year, "pastr"] <- adjusted$pastr
+    pastNewSplit[negCells, year, "range"] <- adjusted$range
+    xBra[negCells, year, "primn"] <- adjusted$primn
+    xBra[negCells, year, "secdn"] <- adjusted$secdn
+    xBra[negCells, year, "primf"] <- adjusted$primf
+    xBra[negCells, year, "secdf"] <- adjusted$secdf
+    xBra[negCells, year, "urban"] <- adjusted$urban
+
+    negCellsAfter <- (pastNewSplit[, year, "pastr"] + pastNewSplit[, year, "range"]) < 0
+    sum(as.vector(pastNewSplit[, year, "pastr"] < 0 & pastNewSplit[, year, "range"] < 0))
+    sum(negCellsAfter)
+
+    residual <- adjusted$residual
+    # If local crop exceeds total available cell area, crop is locally reduced
+    # to preserve physical feasibility and total area conservation.
+    if (any(residual > 0)) {
+      #idx <- which(residual > 0)
+      # cellsResidual <- getCells(xBra)[negCells][idx]
+
+      # debugTable <- data.frame(
+      #   cell     = cellsResidual,
+      #   c3ann    = as.vector(cropPastOrig[negCells, year, "c3ann"][idx]),
+      #   c4ann    = as.vector(cropPastOrig[negCells, year, "c4ann"][idx]),
+      #   c3per    = as.vector(cropPastOrig[negCells, year, "c3per"][idx]),
+      #   c4per    = as.vector(cropPastOrig[negCells, year, "c4per"][idx]),
+      #   c3nfx    = as.vector(cropPastOrig[negCells, year, "c3nfx"][idx]),
+      #   pastr    = as.vector(cropPastOrig[negCells, year, "pastr"][idx]),
+      #   range    = as.vector(cropPastOrig[negCells, year, "range"][idx]),
+      #   primn    = as.vector(primnOrig[negCells][idx]),
+      #   secdn    = as.vector(secdnOrig[negCells][idx]),
+      #   primf    = as.vector(primfOrig[negCells][idx]),
+      #   secdf    = as.vector(secdfOrig[negCells][idx]),
+      #   urban    = as.vector(urbanOrig[negCells][idx]),
+      #   farm     = as.vector(farm[negCells][idx]),
+      #   c3annIBGE = as.vector(cropNew[negCells, year, "c3ann"][idx]),
+      #   c4annIBGE = as.vector(cropNew[negCells, year, "c4ann"][idx]),
+      #   c3perIBGE = as.vector(cropNew[negCells, year, "c3per"][idx]),
+      #   c4perIBGE = as.vector(cropNew[negCells, year, "c4per"][idx]),
+      #   c3nfxIBGE = as.vector(cropNew[negCells, year, "c3nfx"][idx]),
+      #   pastrNew  = as.vector(pastNewSplit[negCells, year, "pastr"][idx]),
+      #   rangeNew  = as.vector(pastNewSplit[negCells, year, "range"][idx]),
+      #   primnNew  = as.vector(xBra[negCells, year, "primn"][idx]),
+      #   secdnNew  = as.vector(xBra[negCells, year, "secdn"][idx]),
+      #   primfNew  = as.vector(xBra[negCells, year, "primf"][idx]),
+      #   secdfNew  = as.vector(xBra[negCells, year, "secdf"][idx]),
+      #   urbanNew  = as.vector(xBra[negCells, year, "urban"][idx]),
+      #   residual  = as.vector(residual[idx])
+      # )
+      # debugTable$cropTotal <- rowSums(debugTable[, c("c3ann", "c3per", "c4ann", "c4per", "c3nfx")])
+      # debugTable$pastTotal <- rowSums(debugTable[, c("pastr", "range")])
+      # debugTable$cropIBGE <- rowSums(debugTable[, c("c3annIBGE", "c3perIBGE", "c4annIBGE", "c4perIBGE", "c3nfxIBGE")])
+      # debugTable$pastNew <- rowSums(debugTable[, c("pastrNew", "rangeNew")])
+      # debugTable$total <- rowSums(debugTable[, c("c3ann", "c3per", "c4ann", "c4per", "c3nfx", "pastr", "range",
+      #                                            "primn", "secdn", "primf", "secdf", "urban")])
+      # debugTable$totalNew <- rowSums(debugTable[, c("cropIBGE", "pastNew", "primnNew", "secdnNew",
+      #                                               "primfNew", "secdfNew", "urbanNew")])
+      # debugTable$total <- formatC(debugTable$total, format = "f", digits = 8)
+      # debugTable$totalNew <- formatC(debugTable$totalNew, format = "f", digits = 8)
+
+
+      # print(
+      #   cbind(
+      #     debugTable["cell"],
+      #     lapply(debugTable[ , -1], formatC, format = "f", digits = 8)
+      #   )
+      # )
+
+      # write.table(
+      #   debugTable,
+      #   file = "debugTable.csv",   # nome do arquivo
+      #   sep = ";",                 # separador ponto e vírgula
+      #   dec = ".",                 # decimal com ponto
+      #   row.names = FALSE,         # não salva índice das linhas
+      #   quote = FALSE              # não coloca aspas em strings
+      # )
+
+      # Calculate total available area in each cell
+      cropPastTotal <- dimSums(cropPastOrig, dim = 3)
+      totalAvailable <- as.vector(
+        cropPastTotal[negCells] +
+          primnOrig[negCells] +
+          secdnOrig[negCells] +
+          primfOrig[negCells] +
+          secdfOrig[negCells] +
+          urbanOrig[negCells]
+      )
+
+
+      .redistributeCrop <- function(cropVec, deficit) {
+        if (deficit <= 0 || sum(cropVec) <= 0) {
+          return(cropVec)
+        }
+
+        remaining <- cropVec
+        rest <- deficit
+
+        while (rest > 1e-12 && any(remaining > 0)) {
+          w <- remaining / sum(remaining)
+          delta <- w * rest
+          delta <- pmin(delta, remaining)
+
+          remaining <- remaining - delta
+          rest <- rest - sum(delta)
+        }
+
+        return(remaining)
+      }
+
+
+      # 1️st Case: total > 0 and residual positive → reduce crop by residual
+      idxPositive <- which(residual > 0 & totalAvailable > 0)
+      if (length(idxPositive) > 0) {
+        cells <- which(negCells)
+
+        for (k in idxPositive) {
+          cell <- cells[k]
+
+          cropVec <- as.numeric(cropNew[cell, , drop = TRUE])
+          newCrop <- .redistributeCrop(cropVec, residual[k])
+
+          cropNew[cell, , ] <- newCrop
+          pastNewSplit[cell, , ] <- 0
+        }
+      }
+
+      # 2️nd Case: total == 0 → set crop and past to zero
+      idxZero <- which(totalAvailable == 0)
+      if (length(idxZero) > 0) {
+        cells <- which(negCells)
+
+        for (k in idxZero) {
+          cell <- cells[k]
+
+          cropNew[cell, , ]      <- 0
+          pastNewSplit[cell, , ] <- 0
+        }
+      }
+    }
+
+    xBra[, year, getItems(cropNew, 3)]      <- cropNew
+    xBra[, year, getItems(pastNewSplit, 3)] <- pastNewSplit
+
+
+    # identify cells with negative past
+    negxBraCells <- xBra < 0
+
+    # number of negative cells
+    numNegXCells <- sum(as.vector(negxBraCells))
+    numNegXCells
+  }
+
+  # # total per class (sum over all Brazil cells)
+  # totalPerClass <- as.data.frame(dimSums(xBra, dim = 1))
+  # totalPerClass
+
+  # totalCountry <- dimSums(xBra, dim = c(1, 3))
+  # totalCountry
+
+  x[brazilCells, , ] <- xBra
+
   if (isTRUE(irrigation)) {
     crops <- c("c3ann", "c3per", "c4ann", "c4per", "c3nfx")
     irrigLUH <- readSource("LUH3", "management", yrs, convert = FALSE)
@@ -137,25 +460,36 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     stopifnot(min(x[, , "rainfed"]) >= 0)
   }
 
-  # adjust past to avoid negative values
-  .adjustPastCells <- function(pastValues, otherValues, forestValues, urbanValues) {
-    deficit <- -pastValues
-    adjustOther <- pmin(deficit, otherValues)
-    otherValues <- otherValues - adjustOther
-    deficit <- deficit - adjustOther
+  # # adjust past to avoid negative values
+  # .adjustCellsMagpie <- function(pastValues, otherValues, forestValues, urbanValues) {
+  #   deficit <- -pastValues
 
-    adjustForest <- pmin(deficit, forestValues)
-    forestValues <- forestValues - adjustForest
-    deficit <- deficit - adjustForest
+  #   adjustOther <- pmin(deficit, otherValues)
+  #   otherValues <- otherValues - adjustOther
+  #   deficit <- deficit - adjustOther
 
-    adjustUrban <- pmin(deficit, urbanValues)
-    urbanValues <- urbanValues - adjustUrban
-    deficit <- deficit - adjustUrban
+  #   idx <- deficit > 0
+  #   if (any(idx)) {
+  #     adjustForest <- pmin(deficit[idx], forestValues[idx])
+  #     forestValues[idx] <- forestValues[idx] - adjustForest
+  #     deficit[idx] <- deficit[idx] - adjustForest
+  #   }
 
-    pastValues[pastValues < 0] <- 0
+  #   idx <- deficit > 0
+  #   if (any(idx)) {
+  #     adjustUrban <- pmin(deficit[idx], urbanValues[idx])
+  #     urbanValues[idx] <- urbanValues[idx] - adjustUrban
+  #     deficit[idx] <- deficit[idx] - adjustUrban
+  #   }
 
-    list(past = pastValues, other = otherValues, forest = forestValues, urban = urbanValues)
-  }
+  #   pastValues[deficit == 0] <- 0
+
+  #   list(past = pastValues,
+  #        other = otherValues,
+  #        forest = forestValues,
+  #        urban = urbanValues,
+  #        residual = deficit)
+  # }
 
   if (landuseTypes == "magpie") {
     mapping <- toolGetMapping("LUH3.csv", where = "mrlandcore")
@@ -167,98 +501,160 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     stopifnot(setequal(getItems(x, 3), mapping$luh3))
     x <- toolAggregate(x, mapping, dim = 3, from = "luh3", to = "land")
 
-    cropIBGE <- readSource("IBGE", "Cropland")
+    # cropIBGE <- readSource("IBGE", "Cropland")
 
-    # select Brazil cells
-    brazilCells <- getCells(x)[grepl("\\.BRA$", getCells(x))]
-    xBra <- x[brazilCells, , ]
+    # # select Brazil cells
+    # brazilCells <- getCells(x)[grepl("\\.BRA$", getCells(x))]
+    # xBra <- x[brazilCells, , ]
 
-    # total per class (sum over all Brazil cells)
-    totalPerClass <- as.data.frame(dimSums(xBra, dim = 1))
-    totalPerClass
+    # # total per class (sum over all Brazil cells)
+    # totalPerClassBefore <- as.data.frame(dimSums(xBra, dim = 1))
+    # totalPerClassBefore
 
-    totalCountry <- dimSums(xBra, dim = c(1, 3))
-    totalCountry
+    # totalCountry <- dimSums(xBra, dim = c(1, 3))
+    # totalCountry
 
-    # check sums per cell
-    cellSums <- dimSums(xBra, dim = 3)
-    range(as.vector(cellSums))
+    # # check sums per cell
+    # cellSums <- dimSums(xBra, dim = 3)
+    # range(as.vector(cellSums))
 
-    yearsToAdjust <- c("y1995")
+    # yearsToAdjust <- c("y1995")
+    # year <- "y1995"
 
-    for (year in yearsToAdjust) {
-      cropOrig <- xBra[, year, "crop"]
-      pastOrig <- xBra[, year, "past"]
+    # for (year in yearsToAdjust) {
+    #   cropOrig <- xBra[, year, "crop"]
+    #   pastOrig <- xBra[, year, "past"]
 
-      # compute farm = crop + past
-      farm <- cropOrig + pastOrig
-
-      # replace crop with IBGE
-      cropNew <- cropIBGE[, year, "cropland"]
-
-      # compute new past = farm - new crop
-      pastNew <- farm - cropNew
-
-      # identify cells with negative past
-      negCells <- pastNew < 0
-
-      # number of negative cells
-      numNegCells <- sum(as.vector(negCells))
-      #numNegCells
-
-      # sum of negative values (pastNew < 0)
-      totalNeg <- sum(as.vector(pastNew[negCells]))
-      #totalNeg
-
-      if (any(negCells)) {
-        otherOrig <- xBra[, year, "other"]
-        forestOrig <- xBra[, year, "forest"]
-        urbanOrig <- xBra[, year, "urban"]
-
-        adjustedCells <- .adjustPastCells(
-          pastNew[negCells],
-          otherOrig[negCells],
-          forestOrig[negCells],
-          urbanOrig[negCells]
-        )
-
-        pastNew[negCells] <- adjustedCells$past
-        xBra[negCells, year, "other"] <- adjustedCells$other
-        xBra[negCells, year, "forest"] <- adjustedCells$forest
-        xBra[negCells, year, "urban"] <- adjustedCells$urban
-      }
-
-      # update xBra with new crop and past
-      xBra[, year, "crop"] <- cropNew
-      xBra[, year, "past"] <- pastNew
+    #   # compute farm = crop + past
+    #   farm <- cropOrig + pastOrig
+    #   dimnames(farm)[[3]] <- "crop.past"
+    #   names(dimnames(farm))[3] <- "landuse"
 
 
-      # identify cells with negative past
-      negxBraCells <- xBra < 0
+    #   # replace crop with IBGE
+    #   cropNew <- cropIBGE[, year, "cropland"]
+    #   dimnames(cropNew)[[3]] <- "crop.past"
+    #   names(dimnames(cropNew))[3] <- "landuse"
 
-      # number of negative cells
-      numNegXCells <- sum(as.vector(negxBraCells))
-      #numNegXCells
-    }
+    #   # realign cropNew with farm
+    #   idx <- match(dimnames(farm)[[1]], dimnames(cropNew)[[1]])
+    #   cropNew <- cropNew[idx, , drop = FALSE]
+    #   idx <- match(dimnames(farm)[[1]], dimnames(cropNew)[[1]])
 
-    # apply adjustment to not exceed max area
-    dataAdjusted <- .adjustGrid(as.array(xBra))
+    #   # compute new past = farming LUH3 - crop IBGE
+    #   pastNew <- farm - cropNew
+    #   dimnames(pastNew)[[3]] <- "past"
+    #   names(dimnames(pastNew))[3] <- "landuse"
 
-    # put adjusted data back into magpie object
-    xBra[, ] <- dataAdjusted
-    # check sums per cell
-    cellSums <- dimSums(xBra, dim = 3)
-    range(as.vector(cellSums))
+    #   # identify cells with negative past
+    #   negCells <- pastNew < 0
 
-    # total per class (sum over all Brazil cells)
-    totalPerClass <- as.data.frame(dimSums(xBra, dim = 1))
-    #totalPerClass
+    #   # number of negative cells
+    #   numNegCells <- sum(as.vector(negCells))
+    #   numNegCells
 
-    totalCountry <- dimSums(xBra, dim = c(1, 3))
-    #totalCountry
+    #   # sum of negative values (pastNew < 0)
+    #   totalNeg <- sum(as.vector(pastNew[negCells]))
+    #   totalNeg
 
-    x[brazilCells, , ] <- xBra
+    #   if (any(negCells)) {
+    #     otherOrig <- xBra[, year, "other"]
+    #     forestOrig <- xBra[, year, "forest"]
+    #     urbanOrig <- xBra[, year, "urban"]
 
+    #     adjustedCells <- .adjustCellsMagpie(
+    #       pastNew[negCells],
+    #       otherOrig[negCells],
+    #       forestOrig[negCells],
+    #       urbanOrig[negCells]
+    #     )
+
+    #     pastNew[negCells] <- adjustedCells$past
+    #     xBra[negCells, year, "other"] <- adjustedCells$other
+    #     xBra[negCells, year, "forest"] <- adjustedCells$forest
+    #     xBra[negCells, year, "urban"] <- adjustedCells$urban
+
+    #     sum(as.vector(pastNew < 0))
+    #     residual <- adjustedCells$residual
+    #     # If local crop exceeds total available cell area, crop is locally reduced
+    #     # to preserve physical feasibility and total area conservation.
+    #     if (any(residual > 0)) {
+    #       idx <- which(residual > 0)
+    #       cellsResidual <- getCells(xBra)[negCells][idx]
+
+    #       debugTable <- data.frame(
+    #         cell   = cellsResidual,
+    #         crop   = as.vector(cropOrig[negCells][idx]),
+    #         past   = as.vector(pastOrig[negCells][idx]),
+    #         forest = as.vector(forestOrig[negCells][idx]),
+    #         other  = as.vector(otherOrig[negCells][idx]),
+    #         urban  = as.vector(urbanOrig[negCells][idx]),
+    #         farm   = as.vector(farm[negCells][idx]),
+    #         cropIBGE = as.vector(cropNew[negCells][idx]),
+    #         pastNew  = as.vector(pastNew[negCells][idx]),
+    #         residual = as.vector(residual[idx])
+    #       )
+    #       debugTable$total <- rowSums(debugTable[, c("crop", "past", "forest", "other", "urban")])
+    #       debugTable$total <- formatC(debugTable$total, format = "f", digits = 8)
+
+    #       print(
+    #         cbind(
+    #           debugTable["cell"],
+    #           lapply(debugTable[ , -1], formatC, format = "f", digits = 8)
+    #         )
+    #       )
+
+    #       # Calculate total available area in each cell
+    #       totalAvailable <- as.vector(
+    #         cropOrig[negCells] + pastOrig[negCells] + forestOrig[negCells] + otherOrig[negCells] + urbanOrig[negCells]
+    #       )
+
+    #       # 1️st Case: total > 0 and residual positive → reduce crop by residual
+    #       idxPositive <- which(residual > 0 & totalAvailable > 0)
+    #       if (length(idxPositive) > 0) {
+    #         cropNew[negCells][idxPositive] <- cropNew[negCells][idxPositive] - residual[idxPositive]
+    #         pastNew[negCells][idxPositive] <- 0
+    #       }
+
+    #       # 2️nd Case: total == 0 → set crop and past to zero
+    #       idxZero <- which(totalAvailable == 0)
+    #       if (length(idxZero) > 0) {
+    #         cropNew[negCells][idxZero] <- 0
+    #         pastNew[negCells][idxZero] <- 0
+    #       }
+
+    #     }
+
+    #     # update xBra with new crop and past
+    #     xBra[, year, "crop"] <- cropNew
+    #     xBra[, year, "past"] <- pastNew
+
+    #     # identify cells with negative past
+    #     negxBraCells <- xBra < 0
+
+    #     # number of negative cells
+    #     numNegXCells <- sum(as.vector(negxBraCells))
+    #     numNegXCells
+    #   }
+    # }
+
+    # # apply adjustment to not exceed max area
+    # dataAdjusted <- .adjustGrid(as.array(xBra))
+
+    # # put adjusted data back into magpie object
+    # xBra[, ] <- dataAdjusted
+    # # check sums per cell
+    # cellSums <- dimSums(xBra, dim = 3)
+    # range(as.vector(cellSums))
+
+    # # total per class (sum over all Brazil cells)
+    # totalPerClass <- as.data.frame(dimSums(xBra, dim = 1))
+    # totalPerClass
+
+    # totalCountry <- dimSums(xBra, dim = c(1, 3))
+    # totalCountry
+
+    # x[brazilCells, , ] <- xBra
   }
 
   if (!cellular) {
