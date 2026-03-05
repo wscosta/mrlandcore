@@ -17,10 +17,11 @@
 #'
 #' @importFrom utils read.csv
 
-readIBGE <- function(subtype = "Cropland", yrs = seq(1965, 2020, 5)) {
+readIBGE <- function(subtype = "Cropland") {
+
+  yrs <- seq(1965, 2020, 5)
 
   files <- c(
-    #Cropland = "/p/projects/rd3mod/inputdata/sources/IBGE/crop_planted_area_1995_to_2024_luh3_all.csv"
     Cropland = "crop_planted_area_1995_to_2024_luh3_all.csv"
   )
 
