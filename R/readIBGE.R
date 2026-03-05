@@ -6,6 +6,7 @@
 #' (https://sidra.ibge.gov.br//).
 #'
 #' @param subtype Data subtype (currently only "Cropland")
+#' @param yrs     years to be returned
 #'
 #' @return A magpie object with cropland (planted area) data for Brazil (Mha)
 #' @author Wanderson Costa, Alex Koberle, Miodrag Stevanovic
@@ -16,30 +17,15 @@
 #'
 #' @importFrom utils read.csv
 
-readIBGE <- function(subtype = "Cropland") {
+readIBGE <- function(subtype = "Cropland", yrs = seq(1965, 2020, 5)) {
 
   files <- c(
-    #Cropland = "/p/projects/rd3mod/inputdata/sources/IBGE/cropland_1995_all.csv"
-    #Cropland = "cropland_1995_all.csv"
-    #Cropland = "/p/projects/rd3mod/inputdata/sources/IBGE/crop_planted_area_1995_luh3_all.csv"
-    Cropland = "crop_planted_area_1995_luh3_all.csv"
-
+    #Cropland = "/p/projects/rd3mod/inputdata/sources/IBGE/crop_planted_area_1995_to_2024_luh3_all.csv"
+    Cropland = "crop_planted_area_1995_to_2024_luh3_all.csv"
   )
 
   if (!subtype %in% names(files)) {
     stop("Unknown subtype: ", subtype)
-  }
-
-  .capValues <- function(data, valueCol, ceil = 0.30914) {
-
-    cellsModified <- sum(data[[valueCol]] > ceil, na.rm = TRUE)
-
-    idx <- data[[valueCol]] > ceil
-    data[[valueCol]][idx] <- ceil
-
-    message(cellsModified, " cells were capped at ", ceil)
-
-    return(data)
   }
 
   dat <- read.csv(
@@ -61,14 +47,28 @@ readIBGE <- function(subtype = "Cropland") {
   dat[["t"]]     <- as.integer(dat[["t"]])
   dat[["value"]] <- as.numeric(dat[["value"]])
 
+  # If years before 1995 are requested, replicate 1995 values
+  earlyYears <- yrs[yrs < 1995]
+
+  if (length(earlyYears) > 0) {
+    base1995 <- dat[dat$t == 1995, ]
+
+    extra <- do.call(rbind, lapply(earlyYears, function(y) {
+      tmp <- base1995
+      tmp$t <- y
+      tmp
+    }))
+
+    dat <- rbind(dat, extra)
+  }
+
+  # Filter selected years
+  dat <- dat[dat$t %in% yrs, ]
+
   # Conversion (ha to Mha)
   dat[["value"]] <- dat[["value"]] / 1e6
 
-  # Reverse rows to standardize the x.y.iso order with LUH3 data
-  #dat <- dat[rev(seq_len(nrow(dat))), ]
-
-  # Cap values
-  dat <- .capValues(dat, "value")
+  dat <- dat[order(dat$x.y.iso, dat$t, dat$kcr), ]
 
   mag <- magclass::as.magpie(
     dat,
