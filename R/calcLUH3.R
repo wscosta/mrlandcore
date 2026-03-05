@@ -60,8 +60,6 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
   names(dimnames(x)) <- c("x.y.iso", "t", "landuse")
   getSets(x, fulldim = FALSE)[3] <- "landuse"
 
-  cropIBGE <- readSource("IBGE", "Cropland")
-
   # adjusts a single cell so that the sum of its classes does not exceed the ceiling (max cell area in the Equator).
   # the largest class is reduced first, and reductions continue until the total is <= ceil.
   .adjustCell <- function(cellValues, ceil = 0.30914) {
@@ -111,10 +109,10 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
   cellSums <- dimSums(xBra, dim = 3)
   range(as.vector(cellSums))
 
-  year1995 <- 1995
+  cropIBGE <- readSource("IBGE", "Cropland")
 
-  if (year1995 %in% yrs) {
-    year <- "y1995"
+  for (yearInt in yrs) {
+    year <- paste0("y", yearInt)
 
     cropPastOrig <- xBra[, year, c("c3ann", "c4ann", "c3per", "c4per", "c3nfx", "pastr", "range")]
     # Crop = soma das culturas anuais e perenes
@@ -173,9 +171,9 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     sum(pastNewSplit, na.rm = TRUE)
 
     .adjustPastCellsLUH3 <- function(pastrValues, rangeValues,
-                                    primnValues, secdnValues,
-                                    primfValues, secdfValues,
-                                    urbanValues) {
+                                     primnValues, secdnValues,
+                                     primfValues, secdfValues,
+                                     urbanValues) {
       # soma das pastagens
       pastTotal <- pastrValues + rangeValues
 
@@ -386,24 +384,16 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     x[nonBrazilCells, , getItems(irrigLUH, 3)] <- irrigLUH[nonBrazilCells, , ]
     x[nonBrazilCells, , "rainfed"] <- x[nonBrazilCells, , "rainfed"] - collapseNames(x[nonBrazilCells, , "irrigated"])
 
-    if (year1995 %in% yrs) {
-      x[brazilCells, "y1995", paste0(crops, ".irrigated")] <- 0
-    }
+    yearLabels <- paste0("y", yrs)
 
-    yearsNo1995 <- paste0("y", setdiff(yrs, 1995))
-
-    if (length(yearsNo1995) > 0) {
-      x[brazilCells, yearsNo1995, getItems(irrigLUH, 3)] <- irrigLUH[brazilCells, yearsNo1995, ]
-      x[brazilCells, yearsNo1995, "rainfed"] <-  x[brazilCells, yearsNo1995, "rainfed"] -
-        collapseNames(x[brazilCells, yearsNo1995, "irrigated"])
-    }
+    # set irrigated = 0 for Brazil
+    x[brazilCells, yearLabels, paste0(crops, ".irrigated")] <- 0
 
     stopifnot(min(x[, , "rainfed"]) >= 0)
 
     #code logic after having the irrigation map for Brazil (irrigatedBRA)
     # x[brazilCells, , "*.irrigated"] <- irrigatedBRA
     # x[brazilCells, , "*.rainfed"]  <- x[brazilCells, , "*.rainfed"] - irrigatedBRA
-
   }
 
   if (landuseTypes == "magpie") {
