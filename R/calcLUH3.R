@@ -111,7 +111,10 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
 
   cropIBGE <- readSource("IBGE", "Cropland")
 
-  for (yearInt in yrs) {
+  ibgeYears <- as.numeric(sub("y", "", getItems(cropIBGE, 2)))
+  validYears <- intersect(yrs, ibgeYears)
+
+  for (yearInt in validYears) {
     year <- paste0("y", yearInt)
 
     cropPastOrig <- xBra[, year, c("c3ann", "c4ann", "c3per", "c4per", "c3nfx", "pastr", "range")]
@@ -384,7 +387,7 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     x[nonBrazilCells, , getItems(irrigLUH, 3)] <- irrigLUH[nonBrazilCells, , ]
     x[nonBrazilCells, , "rainfed"] <- x[nonBrazilCells, , "rainfed"] - collapseNames(x[nonBrazilCells, , "irrigated"])
 
-    yearLabels <- paste0("y", yrs)
+    yearLabels <- paste0("y", validYears)
 
     # set irrigated = 0 for Brazil
     x[brazilCells, yearLabels, paste0(crops, ".irrigated")] <- 0
