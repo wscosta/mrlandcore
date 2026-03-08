@@ -358,6 +358,26 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
 
   x[brazilCells, , ] <- xBra
 
+  # Interpolate Brazilian cells between IBGE years to avoid abrupt
+  # transitions between IBGE and LUH3 values in intermediate years
+  allYears       <- getYears(x)
+  ibgeYearsLabel <- paste0("y", validYears)
+  availYears     <- intersect(ibgeYearsLabel, allYears)
+
+  if (length(availYears) > 0) {
+    # extract only the IBGE-adjusted years for Brazil
+    xBraIBGE <- x[brazilCells, availYears, ]
+
+    # fill all years by interpolation (linear between IBGE years,
+    # constant extrapolation outside the range)
+    xBraFilled <- toolFillYears(xBraIBGE, allYears)
+
+    # ensure no negative areas
+    xBraFilled[xBraFilled < 0] <- 0
+
+    x[brazilCells, , ] <- xBraFilled
+  }
+
   if (isTRUE(irrigation)) {
     crops <- c("c3ann", "c3per", "c4ann", "c4per", "c3nfx")
 
