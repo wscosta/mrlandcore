@@ -387,10 +387,10 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     x[nonBrazilCells, , getItems(irrigLUH, 3)] <- irrigLUH[nonBrazilCells, , ]
     x[nonBrazilCells, , "rainfed"] <- x[nonBrazilCells, , "rainfed"] - collapseNames(x[nonBrazilCells, , "irrigated"])
 
-    yearLabels <- paste0("y", validYears)
+    #yearLabels <- paste0("y", validYears)
 
     # set irrigated = 0 for Brazil
-    x[brazilCells, yearLabels, paste0(crops, ".irrigated")] <- 0
+    x[brazilCells, , paste0(crops, ".irrigated")] <- 0
 
     stopifnot(min(x[, , "rainfed"]) >= 0)
 
