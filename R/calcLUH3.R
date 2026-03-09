@@ -365,16 +365,15 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
   availYears     <- intersect(ibgeYearsLabel, allYears)
 
   if (length(availYears) > 0) {
-    # extract only the IBGE-adjusted years for Brazil
     xBraIBGE <- x[brazilCells, availYears, ]
 
-    # fill all years by interpolation (linear between IBGE years,
-    # constant extrapolation outside the range)
-    xBraFilled <- toolFillYears(xBraIBGE, allYears)
+    # interpolate linearly between IBGE years AND extrapolate constantly outside
+    xBraFilled <- time_interpolate(xBraIBGE,
+                                  interpolated_year = allYears,
+                                  extrapolation_type = "constant",
+                                  integrate_interpolated_years = TRUE)
 
-    # ensure no negative areas
     xBraFilled[xBraFilled < 0] <- 0
-
     x[brazilCells, , ] <- xBraFilled
   }
 
