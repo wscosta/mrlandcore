@@ -109,7 +109,6 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     cell_irr   <- match(brazilIrrCells, getCells(irrBRA))
     yr_irr     <- getYears(irrBRA)
     yr_idx_irr <- match(ifelse(getYears(x) %in% yr_irr, getYears(x), yr_irr[1]), yr_irr)
-    d3_c3ann_chk <- which(getItems(x, 3) == "c3ann.irrigated")
     for (crop in crops) {
       rainfedClass <- paste0(crop, ".rainfed")
       irrigClass   <- paste0(crop, ".irrigated")
@@ -120,19 +119,13 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
       totalCrop <- x@.Data[cell_x, , d3_rain]
       x@.Data[cell_x, , d3_irr]  <- newIrrig
       x@.Data[cell_x, , d3_rain] <- totalCrop - newIrrig
-      if (crop == "c3ann") {
-        cat("DEBUG loop c3ann: sum(newIrrig):", sum(newIrrig),
-            "sum(@.Data post):", sum(x@.Data[cell_x, , d3_irr]), "\n")
-      }
     }
-    cat("DEBUG BEFORE nonBRA: sum(BRA c3ann.irrig):", sum(x@.Data[cell_x, , d3_c3ann_chk]), "\n")
 
     # rest of world: standard LUH3 management approach
     nonBrazilCells <- getCells(x)[!grepl("\\.BRA$", getCells(x))]
     x[nonBrazilCells, , "rainfed"] <- x[nonBrazilCells, , "rainfed"] -
       collapseNames(x[nonBrazilCells, , "irrigated"])
     stopifnot(min(x[nonBrazilCells, , "rainfed"]) >= 0)
-    cat("DEBUG AFTER nonBRA: sum(BRA c3ann.irrig):", sum(x@.Data[cell_x, , d3_c3ann_chk]), "\n")
   }
 
   if (landuseTypes == "magpie") {
