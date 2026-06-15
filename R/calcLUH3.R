@@ -99,39 +99,27 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     # irrigated is capped at class total to handle edge cases in stage-4 weight distribution
     irrBRA <- readSource("MapBiomas", "Irrigation")
     irrBRA <- irrBRA[, , paste0(crops, ".irrigated")]
-    irrBRA <- time_interpolate(irrBRA,
-                               interpolated_year = getYears(x),
-                               extrapolation_type = "constant",
-                               integrate_interpolated_years = TRUE)
     brazilIrrCells <- intersect(brazilCells, getCells(irrBRA))
     stopifnot(length(brazilIrrCells) == length(brazilCells))
 
-    # magclass [<- fails silently when dim-3 of irrBRA (1-level, from readMapBiomas dimnames bypass)
-    # doesn't match x's 2-level dim 3 (after add_dimension). Use @.Data directly.
-    cell_x   <- match(brazilIrrCells, getCells(x))
-    cell_irr <- match(brazilIrrCells, getCells(irrBRA))
-    cat("DEBUG dim(x@.Data):", dim(x@.Data), "\n")
-    cat("DEBUG dim(irrBRA@.Data):", dim(irrBRA@.Data), "\n")
-    cat("DEBUG length(cell_x):", length(cell_x), "cell_x[1]:", cell_x[1], "\n")
-    cat("DEBUG length(cell_irr):", length(cell_irr), "cell_irr[1]:", cell_irr[1], "\n")
-    d3_test_irr <- which(getItems(x,      3) == "c3ann.irrigated")
-    d3_test_src <- which(getItems(irrBRA, 3) == "c3ann.irrigated")
-    cat("DEBUG d3_irr(c3ann):", d3_test_irr, "\n")
-    cat("DEBUG d3_src(c3ann):", d3_test_src, "\n")
-    cat("DEBUG irrBRA@.Data[1,1,d3_src]:", irrBRA@.Data[1, 1, d3_test_src], "\n")
+    # time_interpolate restructures irrBRA's dim-3 into a wrong shape (290 x 1 x 125)
+    # when irrBRA has dot-names from the readMapBiomas dimnames bypass. Avoid it:
+    # map x years to irrBRA years manually (constant extrapolation for pre-1990 years).
+    cell_x     <- match(brazilIrrCells, getCells(x))
+    cell_irr   <- match(brazilIrrCells, getCells(irrBRA))
+    yr_irr     <- getYears(irrBRA)
+    yr_idx_irr <- match(ifelse(getYears(x) %in% yr_irr, getYears(x), yr_irr[1]), yr_irr)
     for (crop in crops) {
       rainfedClass <- paste0(crop, ".rainfed")
       irrigClass   <- paste0(crop, ".irrigated")
       d3_irr  <- which(getItems(x,      3) == irrigClass)
       d3_rain <- which(getItems(x,      3) == rainfedClass)
       d3_src  <- which(getItems(irrBRA, 3) == irrigClass)
-      totalCrop <- x@.Data[cell_x,   , d3_rain]
-      newIrrig  <- irrBRA@.Data[cell_irr, , d3_src]
+      newIrrig  <- irrBRA@.Data[cell_irr, yr_idx_irr, d3_src]
+      totalCrop <- x@.Data[cell_x, , d3_rain]
       x@.Data[cell_x, , d3_irr]  <- newIrrig
       x@.Data[cell_x, , d3_rain] <- totalCrop - newIrrig
     }
-    cat("DEBUG x@.Data[cell_x[1],1,d3_test_irr] after loop:",
-        x@.Data[cell_x[1], 1, d3_test_irr], "\n")
 
     # rest of world: standard LUH3 management approach
     nonBrazilCells <- getCells(x)[!grepl("\\.BRA$", getCells(x))]
