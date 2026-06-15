@@ -20,8 +20,9 @@
 readMapBiomas <- function(subtype = "LandCover") {
 
   files <- c(
-    LandCover  = "mapbiomas_luh3_landcover.csv",
-    Irrigation = "mapbiomas_irrigation.csv"
+    LandCover     = "mapbiomas_luh3_landcover.csv",
+    Irrigation    = "mapbiomas_irrigation.csv",
+    PlantedForest = "mapbiomas_original.csv"
   )
 
   if (!subtype %in% names(files)) {
@@ -33,6 +34,10 @@ readMapBiomas <- function(subtype = "LandCover") {
     sep              = ";",
     stringsAsFactors = FALSE
   )
+
+  if (subtype == "PlantedForest") {
+    dat <- dat[dat[["data"]] == "Forest Plantation", ]
+  }
 
   names(dat)[names(dat) == "year"] <- "t"
 
