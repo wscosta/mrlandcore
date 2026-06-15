@@ -52,7 +52,8 @@ readMapBiomas <- function(subtype = "LandCover") {
 
   # verify order and transformation match before restoring — catches any as.magpie behaviour change
   stopifnot(identical(getItems(mag, 3), transformedClasses))
-  getItems(mag, 3) <- originalClasses
+  # use dimnames directly: getItems(mag,3) <- also converts dots, bypassing it preserves them
+  dimnames(mag)[[3]] <- originalClasses
 
   return(mag)
 }
