@@ -47,6 +47,23 @@ calcLUH3flood <- function(cellular = FALSE, yrs = seq(1965, 2020, 5)) {
 
   names(dimnames(x)) <- c("x.y.iso", "t", "data")
 
+  # Brazil: substitute with MapBiomas flood data (Inundacao, capped at c3ann in script 16)
+  # Same pattern as calcLUH3.R irrigation block:
+  # - avoid time_interpolate (restructures dim-3 of non-standard magpie from dimnames bypass)
+  # - use manual year mapping for constant extrapolation of pre-1990 years
+  # - use @.Data direct assignment to bypass magclass [<- dim-3 mismatch
+  brazilCells    <- getCells(x)[grepl("\\.BRA$", getCells(x))]
+  irrBRA         <- readSource("MapBiomas", "Irrigation")
+  irrBRA         <- irrBRA[, , "flood"]
+  brazilIrrCells <- intersect(brazilCells, getCells(irrBRA))
+  stopifnot(length(brazilIrrCells) == length(brazilCells))
+
+  cell_x     <- match(brazilIrrCells, getCells(x))
+  cell_irr   <- match(brazilIrrCells, getCells(irrBRA))
+  yr_irr     <- getYears(irrBRA)
+  yr_idx_irr <- match(ifelse(getYears(x) %in% yr_irr, getYears(x), yr_irr[1]), yr_irr)
+  x@.Data[cell_x, , 1] <- irrBRA@.Data[cell_irr, yr_idx_irr, 1]
+
   if (!cellular) {
     x <- mstools::toolConv2CountryByCelltype(x, cells = "lpjcell")
   }
