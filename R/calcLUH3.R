@@ -61,6 +61,17 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
   names(dimnames(x)) <- c("x.y.iso", "t", "landuse")
   getSets(x, fulldim = FALSE)[3] <- "landuse"
 
+  # substitute Brazilian cells with MapBiomas landcover (years before 1990 held constant at 1990)
+  lcBRA <- readSource("MapBiomas", "LandCover")
+  lcBRA <- time_interpolate(lcBRA,
+                            interpolated_year = getYears(x),
+                            extrapolation_type = "constant",
+                            integrate_interpolated_years = TRUE)
+  getSets(lcBRA, fulldim = FALSE)[3] <- "landuse"
+  brazilCells <- getCells(x)[grepl("\\.BRA$", getCells(x))]
+  commonCells <- intersect(brazilCells, getCells(lcBRA))
+  x[commonCells, , ] <- lcBRA[commonCells, , getItems(x, 3)]
+
   if (isTRUE(irrigation)) {
     crops <- c("c3ann", "c3per", "c4ann", "c4per", "c3nfx")
     irrigLUH <- readSource("LUH3", "management", yrs, convert = FALSE)
