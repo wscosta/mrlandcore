@@ -43,14 +43,16 @@ readMapBiomas <- function(subtype = "LandCover") {
   dat <- dat[, c("x.y.iso", "t", "data", "value")]
 
   # as.magpie converts "." to "p" in class names (e.g. "c3ann.irrigated" → "c3annpirrigated")
-  # build lookup before conversion: transformed name → original name
+  # save original names and expected transformed names before conversion
   originalClasses    <- unique(dat[["data"]])
   transformedClasses <- gsub(".", "p", originalClasses, fixed = TRUE)
-  classLookup        <- setNames(originalClasses, transformedClasses)
 
   mag <- magclass::as.magpie(dat, spatial = "x.y.iso", tidy = TRUE)
   dimnames(mag)[[1]] <- unique(dat[["x.y.iso"]])
-  getItems(mag, 3)   <- classLookup[getItems(mag, 3)]
+
+  # verify order and transformation match before restoring — catches any as.magpie behaviour change
+  stopifnot(identical(getItems(mag, 3), transformedClasses))
+  getItems(mag, 3) <- originalClasses
 
   return(mag)
 }
