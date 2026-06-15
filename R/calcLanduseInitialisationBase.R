@@ -89,19 +89,19 @@ calcLanduseInitialisationBase <- function(cells = "lpjcell", selectyears = "past
   plantedCells <- intersect(brazilCells, getCells(plantedBRA))
   stopifnot(length(plantedCells) == length(brazilCells))
 
-  cell_lu      <- match(brazilCells, getCells(lu))
-  cell_planted <- match(brazilCells, getCells(plantedBRA))
-  yr_planted   <- getYears(plantedBRA)
-  yr_idx       <- match(ifelse(getYears(lu) %in% yr_planted, getYears(lu), yr_planted[1]), yr_planted)
+  cellLu      <- match(brazilCells, getCells(lu))
+  cellPlanted <- match(brazilCells, getCells(plantedBRA))
+  yrPlanted   <- getYears(plantedBRA)
+  yrIdx       <- match(ifelse(getYears(lu) %in% yrPlanted, getYears(lu), yrPlanted[1]), yrPlanted)
 
-  d3_secdf    <- which(getItems(lu, 3) == "secdforest")
-  d3_forestry <- which(getItems(lu, 3) == "forestry")
+  d3Secdf    <- which(getItems(lu, 3) == "secdforest")
+  d3Forestry <- which(getItems(lu, 3) == "forestry")
 
-  secdf_total  <- lu@.Data[cell_lu, , d3_secdf] + lu@.Data[cell_lu, , d3_forestry]
-  forestry_new <- pmin(plantedBRA@.Data[cell_planted, yr_idx, 1], secdf_total)
+  secdfTotal  <- lu@.Data[cellLu, , d3Secdf] + lu@.Data[cellLu, , d3Forestry]
+  forestryNew <- pmin(plantedBRA@.Data[cellPlanted, yrIdx, 1], secdfTotal)
 
-  lu@.Data[cell_lu, , d3_forestry] <- forestry_new
-  lu@.Data[cell_lu, , d3_secdf]    <- secdf_total - forestry_new
+  lu@.Data[cellLu, , d3Forestry] <- forestryNew
+  lu@.Data[cellLu, , d3Secdf]    <- secdfTotal - forestryNew
 
   luCountry <- toolCountryFill(dimSums(lu, dim = c("x", "y")),
                                fill = 0, verbosity = 2)
@@ -118,12 +118,12 @@ calcLanduseInitialisationBase <- function(cells = "lpjcell", selectyears = "past
 
   # Save BRA cells before reallocation: MapBiomas data is already authoritative for Brazil,
   # toolForestRelocate must not override cell-level forest allocation with FAO/vegC logic.
-  lu_bra <- lu[brazilCells, , ]
+  luBra <- lu[brazilCells, , ]
 
   lu2 <- toolForestRelocate(lu = lu, luCountry = luCountry, natTarget = natTarget, vegC = vegC)
 
   # Restore BRA cells — no reallocation needed for Brazil
-  lu2[brazilCells, , ] <- lu_bra
+  lu2[brazilCells, , ] <- luBra
 
   .splitOther <- function(lu, luh) {
     # split other land in primary and secondary other land

@@ -105,20 +105,20 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     # time_interpolate restructures irrBRA's dim-3 into a wrong shape (290 x 1 x 125)
     # when irrBRA has dot-names from the readMapBiomas dimnames bypass. Avoid it:
     # map x years to irrBRA years manually (constant extrapolation for pre-1990 years).
-    cell_x     <- match(brazilIrrCells, getCells(x))
-    cell_irr   <- match(brazilIrrCells, getCells(irrBRA))
-    yr_irr     <- getYears(irrBRA)
-    yr_idx_irr <- match(ifelse(getYears(x) %in% yr_irr, getYears(x), yr_irr[1]), yr_irr)
+    cellX     <- match(brazilIrrCells, getCells(x))
+    cellIrr   <- match(brazilIrrCells, getCells(irrBRA))
+    yrIrr     <- getYears(irrBRA)
+    yrIdxIrr <- match(ifelse(getYears(x) %in% yrIrr, getYears(x), yrIrr[1]), yrIrr)
     for (crop in crops) {
       rainfedClass <- paste0(crop, ".rainfed")
       irrigClass   <- paste0(crop, ".irrigated")
-      d3_irr  <- which(getItems(x,      3) == irrigClass)
-      d3_rain <- which(getItems(x,      3) == rainfedClass)
-      d3_src  <- which(getItems(irrBRA, 3) == irrigClass)
-      newIrrig  <- irrBRA@.Data[cell_irr, yr_idx_irr, d3_src]
-      totalCrop <- x@.Data[cell_x, , d3_rain]
-      x@.Data[cell_x, , d3_irr]  <- newIrrig
-      x@.Data[cell_x, , d3_rain] <- totalCrop - newIrrig
+      d3Irr  <- which(getItems(x,      3) == irrigClass)
+      d3Rain <- which(getItems(x,      3) == rainfedClass)
+      d3Src  <- which(getItems(irrBRA, 3) == irrigClass)
+      newIrrig  <- irrBRA@.Data[cellIrr, yrIdxIrr, d3Src]
+      totalCrop <- x@.Data[cellX, , d3Rain]
+      x@.Data[cellX, , d3Irr]  <- newIrrig
+      x@.Data[cellX, , d3Rain] <- totalCrop - newIrrig
     }
 
     # rest of world: standard LUH3 management approach

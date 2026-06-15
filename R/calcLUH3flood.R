@@ -58,11 +58,11 @@ calcLUH3flood <- function(cellular = FALSE, yrs = seq(1965, 2020, 5)) {
   brazilIrrCells <- intersect(brazilCells, getCells(irrBRA))
   stopifnot(length(brazilIrrCells) == length(brazilCells))
 
-  cell_x     <- match(brazilIrrCells, getCells(x))
-  cell_irr   <- match(brazilIrrCells, getCells(irrBRA))
-  yr_irr     <- getYears(irrBRA)
-  yr_idx_irr <- match(ifelse(getYears(x) %in% yr_irr, getYears(x), yr_irr[1]), yr_irr)
-  x@.Data[cell_x, , 1] <- irrBRA@.Data[cell_irr, yr_idx_irr, 1]
+  cellX     <- match(brazilIrrCells, getCells(x))
+  cellIrr   <- match(brazilIrrCells, getCells(irrBRA))
+  yrIrr     <- getYears(irrBRA)
+  yrIdxIrr <- match(ifelse(getYears(x) %in% yrIrr, getYears(x), yrIrr[1]), yrIrr)
+  x@.Data[cellX, , 1] <- irrBRA@.Data[cellIrr, yrIdxIrr, 1]
 
   if (!cellular) {
     x <- mstools::toolConv2CountryByCelltype(x, cells = "lpjcell")
