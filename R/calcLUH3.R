@@ -95,10 +95,8 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     irrigLUH <- add_dimension(irrigLUH, dim = 3.2, add = "irrigation", nm = "irrigated")
     x[, , getItems(irrigLUH, 3)] <- irrigLUH
 
-    x[, , "rainfed"] <- x[, , "rainfed"] - collapseNames(x[, , "irrigated"])
-    stopifnot(min(x[, , "rainfed"]) >= 0)
-
-    # substitute Brazilian irrigation with MapBiomas data
+    # substitute Brazilian irrigation with MapBiomas data before rainfed calculation
+    # (LUH3 irrigation can exceed MapBiomas total cropland, causing negative rainfed)
     irrBRA <- readSource("MapBiomas", "Irrigation")
     irrBRA <- irrBRA[, , paste0(crops, ".irrigated")]
     irrBRA <- time_interpolate(irrBRA,
@@ -106,15 +104,14 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
                                extrapolation_type = "constant",
                                integrate_interpolated_years = TRUE)
     brazilIrrCells <- intersect(brazilCells, getCells(irrBRA))
+    stopifnot(length(brazilIrrCells) == length(brazilCells))
     for (crop in crops) {
-      irrigClass   <- paste0(crop, ".irrigated")
-      rainfedClass <- paste0(crop, ".rainfed")
-      oldIrrig <- collapseNames(x[brazilIrrCells, , irrigClass])
-      newIrrig <- collapseNames(irrBRA[brazilIrrCells, , irrigClass])
-      x[brazilIrrCells, , irrigClass]   <- newIrrig
-      x[brazilIrrCells, , rainfedClass] <- collapseNames(x[brazilIrrCells, , rainfedClass]) + oldIrrig - newIrrig
+      x[brazilIrrCells, , paste0(crop, ".irrigated")] <-
+        collapseNames(irrBRA[brazilIrrCells, , paste0(crop, ".irrigated")])
     }
-    stopifnot(min(x[brazilIrrCells, , "rainfed"]) >= 0)
+
+    x[, , "rainfed"] <- x[, , "rainfed"] - collapseNames(x[, , "irrigated"])
+    stopifnot(min(x[, , "rainfed"]) >= 0)
   }
 
   if (landuseTypes == "magpie") {
