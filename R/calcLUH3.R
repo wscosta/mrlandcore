@@ -97,6 +97,24 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
 
     x[, , "rainfed"] <- x[, , "rainfed"] - collapseNames(x[, , "irrigated"])
     stopifnot(min(x[, , "rainfed"]) >= 0)
+
+    # substitute Brazilian irrigation with MapBiomas data
+    irrBRA <- readSource("MapBiomas", "Irrigation")
+    irrBRA <- irrBRA[, , paste0(crops, ".irrigated")]
+    irrBRA <- time_interpolate(irrBRA,
+                               interpolated_year = getYears(x),
+                               extrapolation_type = "constant",
+                               integrate_interpolated_years = TRUE)
+    brazilIrrCells <- intersect(brazilCells, getCells(irrBRA))
+    for (crop in crops) {
+      irrigClass   <- paste0(crop, ".irrigated")
+      rainfedClass <- paste0(crop, ".rainfed")
+      oldIrrig <- collapseNames(x[brazilIrrCells, , irrigClass])
+      newIrrig <- collapseNames(irrBRA[brazilIrrCells, , irrigClass])
+      x[brazilIrrCells, , irrigClass]   <- newIrrig
+      x[brazilIrrCells, , rainfedClass] <- collapseNames(x[brazilIrrCells, , rainfedClass]) + oldIrrig - newIrrig
+    }
+    stopifnot(min(x[brazilIrrCells, , "rainfed"]) >= 0)
   }
 
   if (landuseTypes == "magpie") {
