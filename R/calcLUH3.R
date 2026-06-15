@@ -109,7 +109,7 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
       rainfedClass <- paste0(crop, ".rainfed")
       irrigClass   <- paste0(crop, ".irrigated")
       totalCrop <- collapseNames(x[brazilIrrCells, , rainfedClass])  # MapBiomas total at this point
-      newIrrig  <- pmin(collapseNames(irrBRA[brazilIrrCells, , irrigClass]), totalCrop)
+      newIrrig  <- collapseNames(irrBRA[brazilIrrCells, , irrigClass])
       x[brazilIrrCells, , irrigClass]   <- newIrrig
       x[brazilIrrCells, , rainfedClass] <- totalCrop - newIrrig
     }
