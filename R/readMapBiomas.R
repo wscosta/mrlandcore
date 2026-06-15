@@ -42,11 +42,15 @@ readMapBiomas <- function(subtype = "LandCover") {
   # explicit column order required by as.magpie tidy = TRUE
   dat <- dat[, c("x.y.iso", "t", "data", "value")]
 
+  # as.magpie converts "." to "p" in class names (e.g. "c3ann.irrigated" → "c3annpirrigated")
+  # build lookup before conversion: transformed name → original name
+  originalClasses    <- unique(dat[["data"]])
+  transformedClasses <- gsub(".", "p", originalClasses, fixed = TRUE)
+  classLookup        <- setNames(originalClasses, transformedClasses)
+
   mag <- magclass::as.magpie(dat, spatial = "x.y.iso", tidy = TRUE)
   dimnames(mag)[[1]] <- unique(dat[["x.y.iso"]])
-  # as.magpie interprets "." as sub-dimension separator, collapsing e.g. "c3ann.irrigated"
-  # into "c3ann_irrigated" — restore dots in class names
-  getItems(mag, 3) <- gsub("_", ".", getItems(mag, 3))
+  getItems(mag, 3)   <- classLookup[getItems(mag, 3)]
 
   return(mag)
 }
