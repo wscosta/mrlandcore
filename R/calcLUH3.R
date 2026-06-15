@@ -105,13 +105,21 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
                                integrate_interpolated_years = TRUE)
     brazilIrrCells <- intersect(brazilCells, getCells(irrBRA))
     stopifnot(length(brazilIrrCells) == length(brazilCells))
+
+    # magclass [<- fails silently when dim-3 of irrBRA (1-level, from readMapBiomas dimnames bypass)
+    # doesn't match x's 2-level dim 3 (after add_dimension). Use @.Data directly.
+    cell_x   <- match(brazilIrrCells, getCells(x))
+    cell_irr <- match(brazilIrrCells, getCells(irrBRA))
     for (crop in crops) {
       rainfedClass <- paste0(crop, ".rainfed")
       irrigClass   <- paste0(crop, ".irrigated")
-      totalCrop <- collapseNames(x[brazilIrrCells, , rainfedClass])  # MapBiomas total at this point
-      newIrrig  <- collapseNames(irrBRA[brazilIrrCells, , irrigClass])
-      x[brazilIrrCells, , irrigClass]   <- newIrrig
-      x[brazilIrrCells, , rainfedClass] <- totalCrop - newIrrig
+      d3_irr  <- which(getItems(x,      3) == irrigClass)
+      d3_rain <- which(getItems(x,      3) == rainfedClass)
+      d3_src  <- which(getItems(irrBRA, 3) == irrigClass)
+      totalCrop <- x@.Data[cell_x,   , d3_rain]
+      newIrrig  <- irrBRA@.Data[cell_irr, , d3_src]
+      x@.Data[cell_x, , d3_irr]  <- newIrrig
+      x@.Data[cell_x, , d3_rain] <- totalCrop - newIrrig
     }
 
     # rest of world: standard LUH3 management approach
