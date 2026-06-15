@@ -110,6 +110,15 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     # doesn't match x's 2-level dim 3 (after add_dimension). Use @.Data directly.
     cell_x   <- match(brazilIrrCells, getCells(x))
     cell_irr <- match(brazilIrrCells, getCells(irrBRA))
+    cat("DEBUG dim(x@.Data):", dim(x@.Data), "\n")
+    cat("DEBUG dim(irrBRA@.Data):", dim(irrBRA@.Data), "\n")
+    cat("DEBUG length(cell_x):", length(cell_x), "cell_x[1]:", cell_x[1], "\n")
+    cat("DEBUG length(cell_irr):", length(cell_irr), "cell_irr[1]:", cell_irr[1], "\n")
+    d3_test_irr <- which(getItems(x,      3) == "c3ann.irrigated")
+    d3_test_src <- which(getItems(irrBRA, 3) == "c3ann.irrigated")
+    cat("DEBUG d3_irr(c3ann):", d3_test_irr, "\n")
+    cat("DEBUG d3_src(c3ann):", d3_test_src, "\n")
+    cat("DEBUG irrBRA@.Data[1,1,d3_src]:", irrBRA@.Data[1, 1, d3_test_src], "\n")
     for (crop in crops) {
       rainfedClass <- paste0(crop, ".rainfed")
       irrigClass   <- paste0(crop, ".irrigated")
@@ -121,6 +130,8 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
       x@.Data[cell_x, , d3_irr]  <- newIrrig
       x@.Data[cell_x, , d3_rain] <- totalCrop - newIrrig
     }
+    cat("DEBUG x@.Data[cell_x[1],1,d3_test_irr] after loop:",
+        x@.Data[cell_x[1], 1, d3_test_irr], "\n")
 
     # rest of world: standard LUH3 management approach
     nonBrazilCells <- getCells(x)[!grepl("\\.BRA$", getCells(x))]
