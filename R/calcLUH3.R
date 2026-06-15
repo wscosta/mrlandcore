@@ -95,8 +95,8 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     irrigLUH <- add_dimension(irrigLUH, dim = 3.2, add = "irrigation", nm = "irrigated")
     x[, , getItems(irrigLUH, 3)] <- irrigLUH
 
-    # substitute Brazilian irrigation with MapBiomas data before rainfed calculation
-    # (LUH3 irrigation can exceed MapBiomas total cropland, causing negative rainfed)
+    # Brazil: rainfed = MapBiomas total - MapBiomas irrigated (explicit, no LUH3 management)
+    # irrigated is capped at class total to handle edge cases in stage-4 weight distribution
     irrBRA <- readSource("MapBiomas", "Irrigation")
     irrBRA <- irrBRA[, , paste0(crops, ".irrigated")]
     irrBRA <- time_interpolate(irrBRA,
@@ -106,12 +106,19 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
     brazilIrrCells <- intersect(brazilCells, getCells(irrBRA))
     stopifnot(length(brazilIrrCells) == length(brazilCells))
     for (crop in crops) {
-      x[brazilIrrCells, , paste0(crop, ".irrigated")] <-
-        collapseNames(irrBRA[brazilIrrCells, , paste0(crop, ".irrigated")])
+      rainfedClass <- paste0(crop, ".rainfed")
+      irrigClass   <- paste0(crop, ".irrigated")
+      totalCrop <- collapseNames(x[brazilIrrCells, , rainfedClass])  # MapBiomas total at this point
+      newIrrig  <- pmin(collapseNames(irrBRA[brazilIrrCells, , irrigClass]), totalCrop)
+      x[brazilIrrCells, , irrigClass]   <- newIrrig
+      x[brazilIrrCells, , rainfedClass] <- totalCrop - newIrrig
     }
 
-    x[, , "rainfed"] <- x[, , "rainfed"] - collapseNames(x[, , "irrigated"])
-    stopifnot(min(x[, , "rainfed"]) >= 0)
+    # rest of world: standard LUH3 management approach
+    nonBrazilCells <- getCells(x)[!grepl("\\.BRA$", getCells(x))]
+    x[nonBrazilCells, , "rainfed"] <- x[nonBrazilCells, , "rainfed"] -
+      collapseNames(x[nonBrazilCells, , "irrigated"])
+    stopifnot(min(x[nonBrazilCells, , "rainfed"]) >= 0)
   }
 
   if (landuseTypes == "magpie") {
