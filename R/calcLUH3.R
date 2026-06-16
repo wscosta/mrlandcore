@@ -62,15 +62,21 @@ calcLUH3 <- function(landuseTypes = "magpie", irrigation = FALSE,
   getSets(x, fulldim = FALSE)[3] <- "landuse"
 
   # substitute Brazilian cells with MapBiomas landcover (years before 1990 held constant at 1990)
+  # time_interpolate restructures dim-3 incorrectly for objects read via dimnames bypass;
+  # avoid [<-] operator for the same reason (dim mismatch). Use @.Data directly.
   lcBRA <- readSource("MapBiomas", "LandCover")
-  lcBRA <- time_interpolate(lcBRA,
-                            interpolated_year = getYears(x),
-                            extrapolation_type = "constant",
-                            integrate_interpolated_years = TRUE)
   getSets(lcBRA, fulldim = FALSE)[3] <- "landuse"
   brazilCells <- getCells(x)[grepl("\\.BRA$", getCells(x))]
   commonCells <- intersect(brazilCells, getCells(lcBRA))
-  x[commonCells, , ] <- lcBRA[commonCells, , getItems(x, 3)]
+  if (length(commonCells) > 0) {
+    cellX      <- match(commonCells, getCells(x))
+    cellLc     <- match(commonCells, getCells(lcBRA))
+    yrLc       <- getYears(lcBRA)
+    yrIdxLc    <- match(ifelse(getYears(x) %in% yrLc, getYears(x), yrLc[1]), yrLc)
+    classIdxLc <- match(getItems(x, 3), getItems(lcBRA, 3))
+    stopifnot(!any(is.na(classIdxLc)))
+    x@.Data[cellX, , ] <- lcBRA@.Data[cellLc, yrIdxLc, classIdxLc]
+  }
 
   if (isTRUE(irrigation)) {
     crops <- c("c3ann", "c3per", "c4ann", "c4per", "c3nfx")
